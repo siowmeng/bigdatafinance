@@ -1,0 +1,93 @@
+---
+title: "LassoCV"
+author: "Siow Meng Low"
+date: "2 March 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(java.parameters = "-Xmx1024m")
+
+library(glmnet)
+library(XLConnect)
+```
+
+## Lasso Cross-Validation Logistic Regression
+
+The following uses the R package to perform logistic regression using 10-fold cross validation.  
+
+```{r cvlasso}
+seedValue <- 99
+
+setwd("D:/Imperial MSc/Electives/Big Data in Finance/Coursework/Assignment1")
+
+loans <- readWorksheetFromFile("LCloanbook.xls", sheet = 1)
+
+x <- as.matrix(loans[ , -1])
+y <- as.integer(as.matrix(loans[ , 1]))
+
+set.seed(seedValue)
+cv.lasso <- cv.glmnet(x, y, family = 'binomial', alpha = 1,
+                      standardize = TRUE, type.measure = 'class', nfolds = 10, dfmax = 10)
+
+# set.seed(seedValue)
+# FoldNo <- createFolds(y, k = 10, list = FALSE)
+# 
+# checkY <- function(yPred, yActual) { mean(yPred == yActual) }
+# 
+# accuracy <- data.frame()
+# for (i in 1:10) {
+# 
+#     print(paste("Fold", i))
+#     testX <- x[FoldNo == i, ]
+#     testY <- y[FoldNo == i]
+#     trainX <- x[FoldNo != i, ]
+#     trainY <- y[FoldNo != i]
+# 
+#     set.seed(seedValue)
+#     lassoIter <- glmnet(trainX, trainY, family = 'binomial', alpha = 1,
+#                         standardize = TRUE, dfmax = 10)
+# 
+#     predictAll <- predict(lassoIter, newx = testX, s = lassoIter$lambda, type = "class")
+#     accuracy <- rbind(accuracy, apply(predictAll, 2, checkY, yActual = testY))
+#     names(accuracy) <- 1:length(lasso$lambda)
+# 
+# }
+# 
+# accuracy <- apply(accuracy, 2, mean)
+
+#plot(cv.lasso)
+#plot(cv.lasso$glmnet.fit, xvar = "lambda", label = TRUE)
+#cv.lasso$lambda.min
+#cv.lasso$lambda.1se
+idx <- which(cv.lasso$glmnet.fit$df == 10)
+coef(cv.lasso, s = cv.lasso$lambda[idx])
+
+# mean cross-validated accuracy (for 10 parameters)
+cvAcc <- 1 - cv.lasso$cvm[idx]
+
+# In-Sample Accuracy
+inSampleAcc <- mean(predict(cv.lasso, newx = x, s = cv.lasso$lambda[idx], type = "class") == y)
+```
+
+The accuracy computed using 10-fold cross validation is `r cvAcc`.
+
+## Lasso without Cross Validation
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+set.seed(seedValue)
+lasso <- glmnet(x, y, family = 'binomial', alpha = 1, 
+                standardize = TRUE, dfmax = 10)
+
+#plot(lasso)
+
+idx2 <- which(lasso$df == 10)
+coef(lasso, s = lasso$lambda[idx2])
+
+lassoAcc <- mean(predict(lasso, newx = x, s = lasso$lambda[idx2], type = "class") == y)
+```
+
+The accuracy computed (without cross-validation) is `r lassoAcc`.
