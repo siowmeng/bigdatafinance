@@ -1,0 +1,369 @@
+---
+title: "Assignment 1"
+author: "Siow Meng Low"
+date: "4 March 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(java.parameters = "-Xmx1024m")
+
+library(XLConnect)
+library(boot)
+library(class)
+library(caret)
+library(tree)
+library(glmnet)
+```
+
+## Read in Data  
+
+This section reads in the loans data from the Excel file.  
+
+```{r readdata}
+seedValue <- 99
+
+#setwd("D:/Imperial MSc/Electives/Big Data in Finance/Coursework/Assignment1")
+loans <- readWorksheetFromFile("LCloanbook.xls", sheet = 1)
+scaledLoans <- data.frame(cbind(loans[ , 1], scale(loans[ , -1])))
+names(scaledLoans) <- names(loans)
+```
+
+# Full Model
+
+The following code uses the built in k-fold cross validation function of glm to perform 10-fold cross validation of logistic regression.  
+
+```{r full}
+loans.logit <- glm(loan_status_CO_or_Default_or_Late ~ ., family = "binomial"(link = "logit"), 
+                   data = loans)
+
+# In-sample accuracy without CV
+#sum(abs(loans$loan_status_CO_or_Default_or_Late - loans.logit$fitted.values) <= 0.5)/nrow(loans)
+
+cost <- function(actual, fitted = 0) { mean(abs(actual - fitted) > 0.5) }
+set.seed(seedValue)
+# Cross Validation Logit using function
+loans.cvlogit <- cv.glm(loans, loans.logit, cost, K = 10)
+
+cvLogitAcc <- (1 - loans.cvlogit$delta[1])
+
+```
+
+Using the built-in function, the average accuracy computed using 10-fold cross-validation is `r format(cvLogitAcc * 100, digits = 4)`%.  
+
+The below section uses a loop to perform 10-fold cross validation of logistic regression, tree classifier, and 1-NN.  
+
+```{r fullmanual}
+set.seed(seedValue)
+FoldNo <- createFolds(loans$loan_status_CO_or_Default_or_Late, k = 10, list = FALSE)
+
+# logsitic regression
+classError <- vector()
+treeAcc <- vector()
+knnAcc <- vector()
+for (i in 1:10) {
+
+    #print(paste("Fold", i))
+    # Logistic Regression
+    test <- loans[FoldNo == i, ]
+    train <- loans[FoldNo != i, ]
+    
+    logitIter <- glm(loan_status_CO_or_Default_or_Late ~ ., family = "binomial"(link = "logit"), 
+                   data = train)
+    predictTest <- predict(logitIter, newdata = test[ , -1], type = "response")
+    classError <- append(classError, 
+                         mean(abs(test$loan_status_CO_or_Default_or_Late - predictTest) > 0.5))
+    
+    # Tree Classifier
+    testTree <- loans[FoldNo == i, ]
+    trainTree <- loans[FoldNo != i, ]
+    
+    treeIter <- tree(factor(loan_status_CO_or_Default_or_Late) ~ ., data = trainTree)
+    predictTree <- predict(treeIter, newdata = testTree[ , -1], type = "class")
+    treeAcc <- append(treeAcc, mean(predictTree == testTree[ , 1]))
+    
+    testKNN <- scaledLoans[FoldNo == i, ]
+    trainKNN <- scaledLoans[FoldNo != i, ]
+    
+    knn.pred <- knn(train = trainKNN[ , -1], 
+                    test = testKNN[ , -1], 
+                    cl = trainKNN[ , 1], 
+                    k = 1)
+    knnTable <- table(testKNN[ , 1], knn.pred)
+    knnAcc <- append(knnAcc, sum(diag(knnTable)) / sum(knnTable))
+
+}
+
+# Accuracy of Logistic Regression
+cvError <- mean(classError)
+logitCVAcc <- 1 - cvError
+
+# Accuracy of Tree Classifier
+treeCVAcc <- mean(treeAcc)
+
+# Accuracy of 1-NN
+knnCVAcc <- mean(knnAcc)
+
+# # 1-NN
+# knnAcc <- vector()
+# for (i in 1:10) {
+# 
+#     print(paste("Fold", i))
+#     testKNN <- scaledLoans[FoldNo == i, ]
+#     trainKNN <- scaledLoans[FoldNo != i, ]
+# 
+#     knn.pred <- knn(train = trainKNN[ , -1], 
+#                     test = testKNN[ , -1], 
+#                     cl = trainKNN[ , 1], 
+#                     k = 1)
+#     
+#     knnTable <- table(testKNN[ , 1], knn.pred)
+#     
+#     knnAcc <- append(knnAcc, sum(diag(knnTable)) / sum(knnTable))
+#     
+# }
+# 
+# (knnCVAcc <- mean(knnAcc))
+# 
+# treeAcc <- vector()
+# for (i in 1:10) {
+# 
+#     print(paste("Fold", i))
+#     testTree <- loans[FoldNo == i, ]
+#     trainTree <- loans[FoldNo != i, ]
+# 
+#     treeIter <- tree(factor(loan_status_CO_or_Default_or_Late) ~ ., data = trainTree)
+#     
+#     predictTree <- predict(treeIter, newdata = testTree[ , -1], type = "class")
+#     
+#     treeAcc <- append(treeAcc, mean(predictTree == testTree[ , 1]))
+#     
+# }
+# 
+# (treeCVAcc <- mean(treeAcc))
+
+```
+
+The computed accuracy (using 10-Fold Cross Validation) of the three classifiers are:  
+
+* Logistic Regression: `r format(logitCVAcc * 100, digits = 4)`%  
+* Tree Classifier: `r format(treeCVAcc * 100, digits = 4)`%  
+* 1-NN: `r format(knnCVAcc * 100, digits = 4)`%  
+
+# Reduced Model
+
+The following code uses the built in k-fold cross validation function of glm to perform 10-fold cross validation of logistic regression for reduced model.  
+
+```{r reduced}
+
+attributesSlct <- c("acc_now_delinq", "delinq_2yrs", "dti", "home_ownership_MORTGAGE", 
+                "home_ownership_OWN", "home_ownership_RENT", "int_rate", 
+                "mths_since_last_delinq", "open_acc_6m", "pub_rec")
+attributesStr <- paste(attributesSlct, collapse = " + ")
+reducedformula <- as.formula(paste("loan_status_CO_or_Default_or_Late", attributesStr, sep = " ~ "))
+reducedTreeformula <- as.formula(paste("factor(loan_status_CO_or_Default_or_Late)", attributesStr, 
+                                       sep = " ~ "))
+
+loans.logit.reduced <- glm(reducedformula, family = "binomial"(link = "logit"), data = loans)
+
+# In-sample accuracy without CV
+#sum(abs(loans$loan_status_CO_or_Default_or_Late - loans.logit$fitted.values) <= 0.5)/nrow(loans)
+
+#cost <- function(actual, fitted = 0) { mean(abs(actual - fitted) > 0.5) }
+set.seed(seedValue)
+# Cross Validation Logit using function
+loans.cvlogit.reduced <- cv.glm(loans, loans.logit.reduced, cost, K = 10)
+
+cvLogitAccReduced <- (1 - loans.cvlogit.reduced$delta[1])
+
+```
+
+Using the built-in function, the average accuracy computed using 10-fold cross-validation is `r format(cvLogitAccReduced * 100, digits = 4)`% for reduced model.  
+
+The below section uses a loop to perform 10-fold cross validation of logistic regression, tree classifier, and 1-NN for reduced model.  
+
+```{r reducedmanual}
+set.seed(seedValue)
+# FoldNo <- createFolds(loans$loan_status_CO_or_Default_or_Late, k = 10, list = FALSE)
+
+# logsitic regression
+classError <- vector()
+treeAcc <- vector()
+knnAcc <- vector()
+for (i in 1:10) {
+
+    #print(paste("Fold", i))
+    # Logistic Regression
+    test <- loans[FoldNo == i, ]
+    train <- loans[FoldNo != i, ]
+    
+    logitIter <- glm(reducedformula, family = "binomial"(link = "logit"), data = train)
+    predictTest <- predict(logitIter, newdata = test[ , -1], type = "response")
+    classError <- append(classError, 
+                         mean(abs(test$loan_status_CO_or_Default_or_Late - predictTest) > 0.5))
+    
+    # Tree Classifier
+    testTree <- loans[FoldNo == i, ]
+    trainTree <- loans[FoldNo != i, ]
+    
+    treeIter <- tree(reducedTreeformula, data = trainTree)
+    predictTree <- predict(treeIter, newdata = testTree[ , -1], type = "class")
+    treeAcc <- append(treeAcc, mean(predictTree == testTree[ , 1]))
+    
+    testKNN <- scaledLoans[FoldNo == i, c("loan_status_CO_or_Default_or_Late", attributesSlct)]
+    trainKNN <- scaledLoans[FoldNo != i, c("loan_status_CO_or_Default_or_Late", attributesSlct)]
+    
+    knn.pred <- knn(train = trainKNN[ , -1], 
+                    test = testKNN[ , -1], 
+                    cl = trainKNN[ , 1], 
+                    k = 1)
+    knnTable <- table(testKNN[ , 1], knn.pred)
+    knnAcc <- append(knnAcc, sum(diag(knnTable)) / sum(knnTable))
+
+}
+
+# Accuracy of Logistic Regression
+cvError <- mean(classError)
+logitCVAccReduced <- 1 - cvError
+
+# Accuracy of Tree Classifier
+treeCVAccReduced <- mean(treeAcc)
+
+# Accuracy of 1-NN
+knnCVAccReduced <- mean(knnAcc)
+
+# # 1-NN
+# knnAcc <- vector()
+# for (i in 1:10) {
+# 
+#     print(paste("Fold", i))
+#     testKNN <- scaledLoans[FoldNo == i, ]
+#     trainKNN <- scaledLoans[FoldNo != i, ]
+# 
+#     knn.pred <- knn(train = trainKNN[ , -1], 
+#                     test = testKNN[ , -1], 
+#                     cl = trainKNN[ , 1], 
+#                     k = 1)
+#     
+#     knnTable <- table(testKNN[ , 1], knn.pred)
+#     
+#     knnAcc <- append(knnAcc, sum(diag(knnTable)) / sum(knnTable))
+#     
+# }
+# 
+# (knnCVAcc <- mean(knnAcc))
+# 
+# treeAcc <- vector()
+# for (i in 1:10) {
+# 
+#     print(paste("Fold", i))
+#     testTree <- loans[FoldNo == i, ]
+#     trainTree <- loans[FoldNo != i, ]
+# 
+#     treeIter <- tree(factor(loan_status_CO_or_Default_or_Late) ~ ., data = trainTree)
+#     
+#     predictTree <- predict(treeIter, newdata = testTree[ , -1], type = "class")
+#     
+#     treeAcc <- append(treeAcc, mean(predictTree == testTree[ , 1]))
+#     
+# }
+# 
+# (treeCVAcc <- mean(treeAcc))
+
+```
+
+The computed accuracy (using 10-Fold Cross Validation) of the three classifiers (for reduced model) are:  
+
+* Logistic Regression: `r format(logitCVAccReduced * 100, digits = 4)`%  
+* Tree Classifier: `r format(treeCVAccReduced * 100, digits = 4)`%  
+* 1-NN: `r format(knnCVAccReduced * 100, digits = 4)`%  
+
+## Lasso Cross-Validation Logistic Regression
+
+The following uses the R package to perform logistic regression using 10-fold cross validation.  
+
+```{r cvlasso}
+
+x <- as.matrix(loans[ , -1])
+y <- as.integer(as.matrix(loans[ , 1]))
+
+set.seed(seedValue)
+cv.lasso <- cv.glmnet(x, y, family = 'binomial', alpha = 1,
+                      standardize = TRUE, type.measure = 'class', nfolds = 10, dfmax = 10)
+
+idx <- which(cv.lasso$glmnet.fit$df == 10)
+cvLassoCoef <- coef(cv.lasso, s = cv.lasso$lambda[idx])
+
+cvLassoCoefSlct <- cvLassoCoef[which(cvLassoCoef != 0)]
+names(cvLassoCoefSlct) <- colnames(loans)[which(cvLassoCoef != 0)]
+names(cvLassoCoefSlct)[1] <- "Intercept"
+
+# mean cross-validated accuracy (for 10 parameters)
+cvAcc <- 1 - cv.lasso$cvm[idx]
+
+print("The coefficients of the LASSO-MODEL are: ")
+print(format(cvLassoCoefSlct, digits = 4))
+
+# In-Sample Accuracy
+#inSampleAcc <- mean(predict(cv.lasso, newx = x, s = cv.lasso$lambda[idx], type = "class") == y)
+```
+
+```{r cvlasso2}
+#set.seed(seedValue)
+#FoldNo <- createFolds(y, k = 10, list = FALSE)
+
+checkY <- function(yPred, yActual) { mean(yPred == yActual) }
+
+accuracy <- data.frame()
+for (i in 1:10) {
+
+    #print(paste("Fold", i))
+    testX <- x[FoldNo == i, ]
+    testY <- y[FoldNo == i]
+    trainX <- x[FoldNo != i, ]
+    trainY <- y[FoldNo != i]
+
+    set.seed(seedValue)
+    lassoIter <- glmnet(trainX, trainY, family = 'binomial', alpha = 1,
+                        standardize = TRUE, dfmax = 10)
+
+    predictAll <- predict(lassoIter, newx = testX, s = lassoIter$lambda, type = "class")
+    accuracy <- rbind(accuracy, apply(predictAll, 2, checkY, yActual = testY))
+
+}
+
+names(accuracy) <- 1:dim(accuracy)[2]
+idxCV2 <- which(lassoIter$df == 10)
+cvAcc2 <- apply(accuracy, 2, mean)[idxCV2]
+```
+
+The accuracy computed using 10-fold cross validation is `r format(cvAcc * 100, digits = 4)`%. Using customised code to perform 10-fold cross-validation, the accuracy is `r format(cvAcc2 * 100, digits = 4)`%.  
+
+## Lasso without Cross Validation
+
+The following code performs LASSO logistic regression using all dataset without cross-validation.  
+
+```{r pressure, echo=FALSE}
+set.seed(seedValue)
+lasso <- glmnet(x, y, family = 'binomial', alpha = 1, 
+                standardize = TRUE, dfmax = 10)
+
+#plot(lasso)
+
+idx2 <- which(lasso$df == 10)
+LassoCoef <- coef(lasso, s = lasso$lambda[idx2])
+
+LassoCoefSlct <- LassoCoef[which(LassoCoef != 0)]
+names(LassoCoefSlct) <- colnames(loans)[which(LassoCoef != 0)]
+names(LassoCoefSlct)[1] <- "Intercept"
+
+print("The coefficients of the LASSO-MODEL are (not using Cross Validation): ")
+print(format(LassoCoefSlct, digits = 4))
+
+lassoAcc <- mean(predict(lasso, newx = x, s = lasso$lambda[idx2], type = "class") == y)
+```
+
+The accuracy computed (without cross-validation) is `r format(lassoAcc * 100, digits = 4)`%.  
+
+
