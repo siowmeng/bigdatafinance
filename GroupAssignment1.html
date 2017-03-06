@@ -11867,35 +11867,6 @@ Accuracy of 1-NN (computed using 10-Fold Cross Validation): 59.79 %
 </div>
 <div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h4 id="Reduced-Model-Attributes">Reduced Model Attributes<a class="anchor-link" href="#Reduced-Model-Attributes">&#182;</a></h4>
-</div>
-</div>
-</div>
-<div class="cell border-box-sizing text_cell rendered">
-<div class="prompt input_prompt">
-</div>
-<div class="inner_cell">
-<div class="text_cell_render border-box-sizing rendered_html">
-<p>The loan attributes we believe are the most informative are:</p>
-<p>1) acc_now_delinq - If a borrower currently has a non-zero number of delinquent accounts, we believe they would be much more likely to default an another loan.</p>
-<p>2) delinq_2yrs - If a borrower has fallen over 30 days past due on a loan within the past two years, we believe they are liable to fall overdue again in future loans.</p>
-<p>3) dti - We belive that the borrower's total debt to income would be critical in determining delinquency because small loans would be more easily repaid. If a borrower falls behind on a large loan, then they would have difficulty meeting interest payments.</p>
-<p>4) home_ownership_MORTGAGE - We belive a borrower that currently has a mortgage would be more likely to default on a loan given that they have existing debt obligations.</p>
-<p>5) home_ownership_OWN - A homeowner would be much less likely to default on a loan, considering they likely have no existing debt payments and much higher likelyhood of free cashflow.</p>
-<p>6) home_ownership_RENT - A person who rents their home would be more likely to default on a loan considering that rent payments are often a person's largest monthly cash outflow. Therefore, since rent payments come first in a person's budget, they might not have enough money left for loan repayments.</p>
-<p>7) int_rate - By using the prevailing public's judgement in setting an interest rate on a loan, we belive that higher rates would correspond with delinquencies. Loans that are assessed as more risky are given larger interest payments to compensate for the higher risk of default.</p>
-<p>8) mths_since_last_delinq - We see the length of time since a borrower has been delinquent as a key predictor because a borrower who has recently defaulted is likely to default again. Conversely, a borrower who defaulted ages ago may have since improved his or her financial status.</p>
-<p>9) open_acc_6m - The number of open credit lines in the last 6 months is an important attribute because people who lean on credit for their daily expenses are more likely to default. A person would only seek to open multiple lines of credit if they have exhausted their currently open lines.</p>
-<p>10) pub_rec - We believe number of derogatory public records is critical because it reflects on the borrower's past history with credit. With prior bankrupcies or liens, the borrower has shown a history of non-repayment. Therefore, they would be much more likely to default on a new loan.</p>
-
-</div>
-</div>
-</div>
-<div class="cell border-box-sizing text_cell rendered">
-<div class="prompt input_prompt">
-</div>
-<div class="inner_cell">
-<div class="text_cell_render border-box-sizing rendered_html">
 <h4 id="Reduced-Model">Reduced Model<a class="anchor-link" href="#Reduced-Model">&#182;</a></h4><p>The accuracies of the three techniques in full models (computed using 10-Fold Cross Validation) are:</p>
 
 </div>
